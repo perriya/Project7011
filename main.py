@@ -1,4 +1,4 @@
-import pymongo,requests,os,threading
+import pymongo,requests,os,threading,time
 from urllib.parse import urlparse
 
 mongodb = os.environ.get("MONGODB_URI")
@@ -8,6 +8,8 @@ new_data = []
 purl_netloc_list = []
 netloc_frelist = []
 acount = 0
+last_run_time = 0
+ptime = 0
 
 def count_frequency(arr):
     frequency = {}
@@ -29,14 +31,14 @@ def req(url):
     return True
 
 def start():
-    global data, new_data, netloc_frelist, acount
+    global data, new_data, netloc_frelist, acount, last_run_time, ptime
     while True:
         try:
             i = data.pop(0)
         except Exception:
             break
         acount += 1
-        if netloc_frelist[urlparse(i["purl"]).netloc] <= 2 and i["status"] != "banned" and (i["tick_time"] * 5) >= i["time"]:
+        if netloc_frelist[urlparse(i["purl"]).netloc] <= 2 and i["status"] != "banned" and ptime >= (int(i["time"]) * 60):
             try:
                 if req(i["purl"]) == False:
                     raise Exception("banned")
@@ -49,13 +51,20 @@ def start():
         new_data.append(i)
 
 def main():
-    global data, new_data, purl_netloc_list, netloc_frelist, acount
+    global data, new_data, purl_netloc_list, netloc_frelist, acount, last_run_time, ptime
     
     client = pymongo.MongoClient(mongodb)
     db = client["main"]
     collection = db["main"]
 
     r_data = collection.find()
+
+    sys_data = db["sys"].find_one()
+    last_run_time = sys_data["last_run_time"]
+    now_time = time.time()
+    ptime = now_time - last_run_time
+
+    db["sys"].update_one({"_id": sys_data["_id"]}, {"$set": {"last_run_time": now_time}})
 
     for i in r_data:
         a = i
@@ -83,7 +92,6 @@ def main():
     if(len(data) == 0):
         print("Count:",acount)
         for i in new_data:
-            #print(i)
             collection.update_one({"_id": i["_id"]}, {"$set": i})    
 
         client.close()
@@ -93,5 +101,6 @@ def main():
 
 
 main()
+
 
 
